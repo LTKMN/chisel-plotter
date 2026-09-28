@@ -1,0 +1,10 @@
+# Netlify CLI cache + site link
+.netlify/
+
+# Deploy staging dir — just a copy of index.html, generated at deploy time.
+dist/
+
+node_modules/
+*.log
+.DS_Store
+Thumbs.db

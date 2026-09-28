@@ -1,0 +1,2 @@
+# Keep LF in the repo and the working tree — this moves between Windows and macOS.
+* text=auto eol=lf
