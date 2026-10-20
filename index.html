@@ -272,6 +272,10 @@ main{flex:1;display:grid;grid-template-columns:290px 1fr 400px;min-height:0}
           <label title="Z feed for lowering the pen, mm/min">z feed</label>
           <input type="number" id="pen-feed" min="10" max="5000" value="500">
         </div>
+        <div class="tc-field">
+          <label title="work Z to park at after a finished run, back over the start point">end Z</label>
+          <input type="number" id="pen-end-z" step="1" value="20">
+        </div>
       </div>
       <div class="btn-grid">
         <button id="pen-up" title="G0 Z(up)">△ PEN UP</button>
@@ -974,6 +978,7 @@ $('z-step').onchange=e=>settings.set('zStep',e.target.value);
 function penUpZ(){const v=parseFloat($('pen-up-z').value);return isFinite(v)?v:3}
 function penDownZ(){const v=parseFloat($('pen-down-z').value);return isFinite(v)?v:0}
 function penFeed(){return Math.max(10,+$('pen-feed').value||500)}
+function penEndZ(){const v=parseFloat($('pen-end-z').value);return Math.max(penUpZ(),isFinite(v)?v:20)}
 function penMidZ(){return(penUpZ()+penDownZ())/2}   // below this = drawing
 function penUpLine(){return'G90 G0 Z'+penUpZ().toFixed(2)}
 function penDownLine(){return'G90 G1 Z'+penDownZ().toFixed(2)+' F'+penFeed()}
@@ -982,7 +987,7 @@ function penDownLine(){return'G90 G1 Z'+penDownZ().toFixed(2)+' F'+penFeed()}
 function liftIfLow(src){if(mpos.z-wco.z<penUpZ()-0.01)sendLine(penUpLine(),src,true)}
 $('pen-up').onclick=()=>sendLine(penUpLine(),'user');
 $('pen-down').onclick=()=>sendLine(penDownLine(),'user');
-for(const[id,key,d]of[['pen-up-z','penUp',3],['pen-down-z','penDown',0],['pen-feed','penFeed',500]]){
+for(const[id,key,d]of[['pen-up-z','penUp',3],['pen-down-z','penDown',0],['pen-feed','penFeed',500],['pen-end-z','penEnd',20]]){
   $(id).value=settings.get(key,d);
   $(id).addEventListener('change',e=>{settings.set(key,+e.target.value);updateDRO()});
 }
@@ -1289,6 +1294,8 @@ function jobFinished(){
   const dur=fmtTime((Date.now()-job.startTime)/1000);
   jobStopUI();
   sendLine(penUpLine(),'user',true);   // files from other tools may end pen-down
+  sendLine('G90 G0 X0 Y0','user',true);              // back over the start point
+  sendLine('G90 G0 Z'+penEndZ().toFixed(2),'user',true); // then park way up, out of the way
   log('job complete: '+job.name+' in '+dur,'sys');
   updateJobUI();
 }

@@ -44,6 +44,7 @@ There are no zero buttons: every OUTLINE and RUN starts from wherever the pen is
 | up Z | work Z when lifted (travel moves) |
 | down Z | work Z touching the paper — `0` = the height RUN was pressed from |
 | z feed | how fast the pen lowers, mm/min (lifts are rapids) |
+| end Z | after a finished run: back to the start point, then park at this work Z (default 20) |
 
 **PEN UP / PEN DOWN** move there directly; the lit button shows the current state.
 GO TO ZERO / `◎`, job end and **STOP** (during a job) lift the pen first so it never drags.
