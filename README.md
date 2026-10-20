@@ -25,9 +25,9 @@ Everything is client-side. Nothing is uploaded; images you trace never leave you
 
 1. **CONNECT**, pick the plotter's USB port. On connect it sends `$$` and learns
    `$130/$131` (work area, drawn as the dashed envelope in the preview).
-2. **Set the pen height:** jog Z down (PgDn, or the Z▼ button at step 0.1) until the pen
-   just touches the paper, then **ZERO Z**. Pen-down is now `0`; pen-up defaults to `3` mm.
-3. Jog to where the drawing's origin should be and **ZERO XY**.
+2. **Set the pen height:** in the Pen panel, nudge Z down (Z▼ or PgDn, step 0.1 for the
+   last bit) until the pen just touches the paper, then **ZERO Z**. Pen-down is now `0`; pen-up defaults to `3` mm.
+3. Jog to where the drawing's origin should be and **SET ZERO**.
 4. Drop a `.gcode`/`.nc` file **or an image** onto the preview. Images open the vector tracer.
 5. **▢ OUTLINE** walks the job's bounding box with the pen up, looping until you click it
    again — use it to position the paper.
@@ -42,7 +42,7 @@ Everything is client-side. Nothing is uploaded; images you trace never leave you
 | z feed | how fast the pen lowers, mm/min (lifts are rapids) |
 
 **PEN UP / PEN DOWN** move there directly; the lit button shows the current state.
-Outline, go-to-zero (`◎`), job end and **STOP** all lift the pen first so it never drags.
+Outline, GO TO ZERO / `◎`, job end and **STOP** all lift the pen first so it never drags.
 
 G-code from other tools works if it lifts and lowers the pen with Z. Files with no Z
 at all preview every feed move as drawn.
@@ -51,11 +51,14 @@ at all preview every feed move as drawn.
 
 | Control | Notes |
 |---|---|
-| Jog pad | `$J=` jog commands. Arrow keys work too; PgUp/PgDn for Z; Esc = jog cancel |
-| HOME / UNLOCK | `$H` / `$X` |
-| ZERO XY / ZERO Z | `G10 L20 P1` — sets work origin at current position |
+| Jog pad | XY `$J=` jog commands. Arrow keys work too; Esc = jog cancel |
+| Z▲ / Z▼ | In the Pen panel, with their own step (0.1–5 mm) at the pen z feed. PgUp/PgDn too |
+| SET ZERO | `G10 L20 P1 X0 Y0` — current XY becomes the drawing origin |
+| GO TO ZERO | Pen up, then `G90 G0 X0 Y0` (same as `◎` in the jog pad) |
+| ZERO Z | `G10 L20 P1 Z0` — current Z becomes pen-down |
+| Alarm popup | Appears only while GRBL is in ALARM. UNLOCK + PEN UP sends `$X` then lifts; LATER hides it (click the blinking badge to reopen) |
 | HOLD / RESUME | Realtime `!` / `~` |
-| STOP | Feed hold, soft reset 400 ms later, then pen up |
+| STOP | Big button pinned atop the left column. While jogging: jog cancel (no reset, no alarm). Otherwise: feed hold, soft reset 400 ms later, then pen up |
 | Overrides | Live feed-rate trim while running |
 | Console | Full history (↑/↓). Error and alarm codes are decoded to plain English |
 
