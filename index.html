@@ -803,6 +803,10 @@ $('state-badge').onclick=()=>{
    a line is sent only when it fits. realtime bytes bypass this.
    ═══════════════════════════════════════ */
 function usedBuffer(){return pending.reduce((a,p)=>a+p.len,0)}
+/* commands that write grbl's EEPROM. the AVR stops servicing serial RX during
+   the write, so bytes streamed behind one get dropped (→ bogus error:1/2).
+   nothing else is sent until such a line is acked. */
+const EEPROM_RE=/(?<![A-Z])G0*(10|28\.1|30\.1)(?![\d.])|^\s*\$(\d+=|N\d*=|RST|I=)/i;
 
 async function sendRealtime(byte){
   if(!writer)return;
@@ -834,11 +838,12 @@ async function pump(){
         cmdQueue.push({line:clean,src:'job',quiet:!$('opt-stream').checked});
       }
       if(!cmdQueue.length)break;
+      if(pending.some(p=>p.eeprom))break;    // grbl deaf during an EEPROM write
       const next=cmdQueue[0];
       const bytes=next.line.length+1;
       if(usedBuffer()+bytes>RX_BUFFER)break; // wait for acks
       cmdQueue.shift();
-      pending.push({len:bytes,src:next.src,line:next.line});
+      pending.push({len:bytes,src:next.src,line:next.line,eeprom:EEPROM_RE.test(next.line)});
       if(!next.quiet)log(next.line,'tx');
       try{
         await writer.write(enc.encode(next.line+'\n'));
