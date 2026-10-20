@@ -265,7 +265,7 @@ main{flex:1;display:grid;grid-template-columns:290px 1fr 400px;min-height:0}
           <input type="number" id="pen-up-z" step="0.5" value="3">
         </div>
         <div class="tc-field">
-          <label title="work Z touching the paper — jog down to the paper, then ZERO Z">down Z</label>
+          <label title="work Z touching the paper — RUN sets Z 0 at the height it's pressed from">down Z</label>
           <input type="number" id="pen-down-z" step="0.1" value="0">
         </div>
         <div class="tc-field">
@@ -283,7 +283,6 @@ main{flex:1;display:grid;grid-template-columns:290px 1fr 400px;min-height:0}
         <select id="z-step" title="Z nudge step, mm">
           <option>0.1</option><option>0.5</option><option selected>1</option><option>5</option>
         </select>
-        <button id="btn-zeroz" title="pen touching the paper? make this Z zero (G10 L20 P1 Z0)">ZERO Z</button>
       </div>
     </div>
 
@@ -342,8 +341,8 @@ main{flex:1;display:grid;grid-template-columns:290px 1fr 400px;min-height:0}
         <input type="file" id="file-input" accept=".nc,.gc,.gcode,.ngc,.txt,.tap,image/*" style="display:none">
         <input type="file" id="image-input" accept="image/*" style="display:none">
         <button id="btn-open">OPEN</button>
-        <button id="btn-frame" title="trace the bounding box with the pen UP to preview size and position — click again to stop looping">▢ OUTLINE</button>
-        <button id="btn-run" class="accent">▶ RUN</button>
+        <button id="btn-frame" title="hover the pen where the drawing should start, then walk the bounding box (Z untouched) — click again to stop and return">▢ OUTLINE</button>
+        <button id="btn-run" class="accent" title="pen touching the paper at the start point — zeroes X, Y and Z here, then draws">▶ RUN</button>
         <button id="btn-pause">❚❚</button>
         <button id="btn-abort">■</button>
       </div>
@@ -444,7 +443,7 @@ main{flex:1;display:grid;grid-template-columns:290px 1fr 400px;min-height:0}
   <b id="alarm-msg">ALARM — machine locked</b><br><br>
   GRBL has locked motion because the position may no longer be trustworthy.
   Unlocking clears the lock and lifts the pen. If the stop was abrupt, steps may
-  have slipped — re-check the pen height (ZERO Z on the paper) before drawing again.
+  have slipped — put the pen back on the paper at the start point before RUN.
   <div class="btn-row" style="margin-top:16px">
     <button id="alarm-unlock" class="accent" title="$X, then pen up">UNLOCK + PEN UP</button>
     <button id="alarm-dismiss" title="leave locked — click the ALARM badge to reopen">LATER</button>
@@ -697,7 +696,7 @@ function handleLine(line){
     sendLine('$$','user',true);
     if(liftOnWelcome){                   // STOP left the pen wherever it was
       liftOnWelcome=false;
-      sendLine(penUpLine(),'user');
+      liftIfLow('user');
     }
     if(frameHomePhase==='reset'){        // outline stop: now safe to go home
       frameHomePhase='sent';
@@ -791,7 +790,7 @@ function updateAlarmModal(){
     ?'ALARM:'+alarmCode+' — '+(ALARMS[alarmCode]||'unknown')
     :'ALARM — machine locked';
 }
-$('alarm-unlock').onclick=()=>{sendLine('$X','user');sendLine(penUpLine(),'user')};
+$('alarm-unlock').onclick=()=>{sendLine('$X','user');liftIfLow('user')};
 $('alarm-dismiss').onclick=()=>{alarmDismissed=true;updateAlarmModal()};
 $('state-badge').onclick=()=>{
   if(machineState==='ALARM'){alarmDismissed=false;updateAlarmModal()}
@@ -887,7 +886,6 @@ $('btn-settings').onclick=()=>{settingsRequested=true;sendLine('$$','user');setT
 /* ═══════════════════════════════════════
    MACHINE BUTTONS
    ═══════════════════════════════════════ */
-$('btn-zeroz').onclick=()=>{sendLine('G10 L20 P1 Z0')};
 $('btn-hold').onclick=()=>sendRealtime(0x21);
 $('btn-resume').onclick=()=>sendRealtime(0x7E);
 $('btn-reset').onclick=async()=>{await sendRealtime(0x18);resetStreamState();jobStopUI()};
@@ -903,10 +901,11 @@ function universalStop(){
 }
 let liftOnWelcome=false;
 async function stopEverything(){
+  const wasDrawing=job.running;         // outline never lowers Z, so nothing to lift
   stopFraming();                        // before the hold, so no new laps queue up
   await sendRealtime(0x21);             // feed hold: decelerate cleanly
   setTimeout(async()=>{
-    liftOnWelcome=true;                  // welcome after reset → pen up
+    liftOnWelcome=wasDrawing;            // welcome after reset → pen up
     await sendRealtime(0x18);            // then soft reset: drops buffered moves
     resetStreamState();
     jobStopUI();
@@ -945,7 +944,7 @@ document.querySelectorAll('#jog-pad [data-jog]').forEach(b=>{
 });
 $('jog-z-up').onclick=()=>doJogZ(1);
 $('jog-z-down').onclick=()=>doJogZ(-1);
-function goToZero(){sendLine(penUpLine(),'user');sendLine('G90 G0 X0 Y0','user')}
+function goToZero(){liftIfLow('user');sendLine('G90 G0 X0 Y0','user')}
 $('goto-zero').onclick=goToZero;
 $('btn-gozero').onclick=goToZero;
 
@@ -969,7 +968,7 @@ $('z-step').value=settings.get('zStep','1');
 $('z-step').onchange=e=>settings.set('zStep',e.target.value);
 
 /* ═══════════════════════════════════════
-   PEN — Z axis, work coords. jog the pen onto the paper, ZERO Z,
+   PEN — Z axis, work coords. RUN zeroes Z with the pen on the paper,
    and down = 0. up is a lift above that.
    ═══════════════════════════════════════ */
 function penUpZ(){const v=parseFloat($('pen-up-z').value);return isFinite(v)?v:3}
@@ -978,6 +977,9 @@ function penFeed(){return Math.max(10,+$('pen-feed').value||500)}
 function penMidZ(){return(penUpZ()+penDownZ())/2}   // below this = drawing
 function penUpLine(){return'G90 G0 Z'+penUpZ().toFixed(2)}
 function penDownLine(){return'G90 G1 Z'+penDownZ().toFixed(2)+' F'+penFeed()}
+/* safety lift: only ever upward. a stale Z zero could put "up Z" below the
+   pen, and an absolute G0 Z there would drive it into the paper */
+function liftIfLow(src){if(mpos.z-wco.z<penUpZ()-0.01)sendLine(penUpLine(),src,true)}
 $('pen-up').onclick=()=>sendLine(penUpLine(),'user');
 $('pen-down').onclick=()=>sendLine(penDownLine(),'user');
 for(const[id,key,d]of[['pen-up-z','penUp',3],['pen-down-z','penDown',0],['pen-feed','penFeed',500]]){
@@ -1239,10 +1241,12 @@ function drawPosMarker(){
 /* ═══════════════════════════════════════
    JOB RUN / PAUSE / ABORT / FRAME
    ═══════════════════════════════════════ */
-/* OUTLINE and RUN start from wherever the pen is: XY work zero is set at the
-   current position first, so a stale zero can never send the head zipping off.
-   Z is left alone — pen-down still comes from ZERO Z on the paper. */
-const ZERO_HERE='G10 L20 P1 X0 Y0';
+/* OUTLINE and RUN start from wherever the pen is, so a stale zero can never
+   send the head zipping off. OUTLINE runs with the pen hovering: XY zero only,
+   Z untouched. RUN starts with the pen on the paper: X, Y and Z zero, so
+   pen-down is exactly the height it was pressed from. */
+const ZERO_XY_HERE='G10 L20 P1 X0 Y0';
+const ZERO_XYZ_HERE='G10 L20 P1 X0 Y0 Z0';
 $('btn-run').onclick=()=>{
   if(!job.lines.length){log('no file loaded','err');return}
   if(job.running)return;
@@ -1251,8 +1255,8 @@ $('btn-run').onclick=()=>{
   job.running=true;job.paused=false;
   job.startTime=Date.now();
   $('btn-run').disabled=true;
-  log('job start: '+job.name+' — origin at current pen position','sys');
-  sendLine(ZERO_HERE,'user',true);      // queued ahead of the first job line
+  log('job start: '+job.name+' — origin and paper height at current pen position','sys');
+  sendLine(ZERO_XYZ_HERE,'user',true);  // queued ahead of the first job line
   pump();
   jobTimer=setInterval(updateJobUI,1000);
 };
@@ -1333,15 +1337,12 @@ function startFraming(){
   $('btn-frame').classList.add('accent');
   $('btn-frame').innerHTML='■ STOP';       // same button toggles to stop
   $('btn-run').disabled=true;              // no drawing while the outline loops
-  sendLine('G21 G90','frame',true);       // laps are absolute even if the lift is skipped
-  sendLine(ZERO_HERE,'frame',true);
-  // pen up for the whole preview — but only lift if it's below up Z;
-  // a pen already at or above it stays put (no extra Z travel)
-  if(mpos.z-wco.z<penUpZ()-0.01)sendLine(penUpLine(),'frame',true);
+  sendLine('G21 G90','frame',true);
+  sendLine(ZERO_XY_HERE,'frame',true);     // Z untouched: you're hovering where you want it
   sendLine('G0 X'+r2(b.minx)+' Y'+r2(b.miny),'frame',true);
   enqueueFrameLap();
   log('outline '+r2(b.maxx-b.minx)+' × '+r2(b.maxy-b.miny)+' mm @ F'+f+
-      ' from current position — pen up, looping until stopped','sys');
+      ' from current position — Z untouched, looping until stopped','sys');
   drawPreview();
 }
 /* silent cleanup — used by resets, errors, disconnects, and RUN. no motion. */
