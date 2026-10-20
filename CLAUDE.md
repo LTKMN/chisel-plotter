@@ -12,6 +12,9 @@ there may apply here too.
   never emit spindle/laser commands.
 - A feed move previews as drawn when Z < midpoint of up/down (or when the file never
   sets Z). Anything that travels (outline, go-to-zero, job end, STOP) lifts first.
+- **Jobs start where the pen is.** OUTLINE and RUN send `G10 L20 P1 X0 Y0` first, so
+  XY work zero is always the position they were pressed from — there is no manual
+  XY zero button. Z is never auto-zeroed (pen-down comes from ZERO Z on the paper).
 - **No true machine homing.** Treat "home" / "return home" as **work zero** —
   `G90 G0 X0 Y0` (same target as the `◎` goto-zero button) — never a `$H` cycle.
 - Target machine: a Cetus 3D printer converted to GRBL 1.1h (Uno + CNC shield,

@@ -250,13 +250,10 @@ main{flex:1;display:grid;grid-template-columns:290px 1fr 400px;min-height:0}
     <div class="panel">
       <h2>Machine</h2>
       <div class="btn-grid">
-        <button id="btn-zero" title="make the current XY position work zero (G10 L20 P1 X0 Y0)">⊕ SET ZERO</button>
-        <button id="btn-gozero" title="lift the pen and travel to work zero (G90 G0 X0 Y0)">◎ GO TO ZERO</button>
+        <button id="btn-gozero" title="lift the pen and go back to where the last outline / run started (G90 G0 X0 Y0)">◎ GO TO ZERO</button>
+        <button id="btn-reset" title="soft reset (ctrl-x)">⟲ RESET</button>
         <button id="btn-hold" title="feed hold (!)">❚❚ HOLD</button>
         <button id="btn-resume" title="cycle start (~)">► RESUME</button>
-      </div>
-      <div class="btn-row">
-        <button id="btn-reset" title="soft reset (ctrl-x)">⟲ RESET</button>
       </div>
     </div>
 
@@ -446,8 +443,8 @@ main{flex:1;display:grid;grid-template-columns:290px 1fr 400px;min-height:0}
 <div id="alarm-modal"><div class="box">
   <b id="alarm-msg">ALARM — machine locked</b><br><br>
   GRBL has locked motion because the position may no longer be trustworthy.
-  Unlocking clears the lock and lifts the pen. If the stop was abrupt, check the
-  origin afterwards and SET ZERO again if it drifted.
+  Unlocking clears the lock and lifts the pen. If the stop was abrupt, steps may
+  have slipped — re-check the pen height (ZERO Z on the paper) before drawing again.
   <div class="btn-row" style="margin-top:16px">
     <button id="alarm-unlock" class="accent" title="$X, then pen up">UNLOCK + PEN UP</button>
     <button id="alarm-dismiss" title="leave locked — click the ALARM badge to reopen">LATER</button>
@@ -885,7 +882,6 @@ $('btn-settings').onclick=()=>{settingsRequested=true;sendLine('$$','user');setT
 /* ═══════════════════════════════════════
    MACHINE BUTTONS
    ═══════════════════════════════════════ */
-$('btn-zero').onclick=()=>{sendLine('G10 L20 P1 X0 Y0')};
 $('btn-zeroz').onclick=()=>{sendLine('G10 L20 P1 Z0')};
 $('btn-hold').onclick=()=>sendRealtime(0x21);
 $('btn-resume').onclick=()=>sendRealtime(0x7E);
@@ -1212,15 +1208,20 @@ function drawPreview(){
   if(job.bounds){
     hud+='X '+job.bounds.minx.toFixed(1)+' … '+job.bounds.maxx.toFixed(1)+'  ('+(job.bounds.maxx-job.bounds.minx).toFixed(1)+' mm)\n';
     hud+='Y '+job.bounds.miny.toFixed(1)+' … '+job.bounds.maxy.toFixed(1)+'  ('+(job.bounds.maxy-job.bounds.miny).toFixed(1)+' mm)';
+    if(!previewLive())hud+='\n◎ starts from current pen position';
   }
   $('preview-hud').textContent=hud;
 }
 
-/* live position crosshair, drawn as the last layer of drawPreview */
+/* live position crosshair, drawn as the last layer of drawPreview.
+   idle, the next OUTLINE/RUN zeroes XY right here, so the pen sits at the
+   job origin by definition; only once moving does the real offset show */
+function previewLive(){return job.running||framing||frameHomePhase!==null}
 function drawPosMarker(){
   const wx=mpos.x-wco.x,wy=mpos.y-wco.y;
   lastPos={x:wx,y:wy};
-  const sx=W2SX(wx),sy=W2SY(wy);
+  const live=previewLive();
+  const sx=W2SX(live?wx:0),sy=W2SY(live?wy:0);
   ctx.strokeStyle='rgb('+themeA.join(',')+')';
   ctx.lineWidth=1.5;
   ctx.beginPath();
@@ -1233,6 +1234,10 @@ function drawPosMarker(){
 /* ═══════════════════════════════════════
    JOB RUN / PAUSE / ABORT / FRAME
    ═══════════════════════════════════════ */
+/* OUTLINE and RUN start from wherever the pen is: XY work zero is set at the
+   current position first, so a stale zero can never send the head zipping off.
+   Z is left alone — pen-down still comes from ZERO Z on the paper. */
+const ZERO_HERE='G10 L20 P1 X0 Y0';
 $('btn-run').onclick=()=>{
   if(!job.lines.length){log('no file loaded','err');return}
   if(job.running)return;
@@ -1241,7 +1246,8 @@ $('btn-run').onclick=()=>{
   job.running=true;job.paused=false;
   job.startTime=Date.now();
   $('btn-run').disabled=true;
-  log('job start: '+job.name,'sys');
+  log('job start: '+job.name+' — origin at current pen position','sys');
+  sendLine(ZERO_HERE,'user',true);      // queued ahead of the first job line
   pump();
   jobTimer=setInterval(updateJobUI,1000);
 };
@@ -1322,12 +1328,15 @@ function startFraming(){
   $('btn-frame').classList.add('accent');
   $('btn-frame').innerHTML='■ STOP';       // same button toggles to stop
   $('btn-run').disabled=true;              // no drawing while the outline loops
-  sendLine('G21','frame',true);
-  sendLine(penUpLine(),'frame',true);      // pen up for the whole preview
+  sendLine('G21 G90','frame',true);       // laps are absolute even if the lift is skipped
+  sendLine(ZERO_HERE,'frame',true);
+  // pen up for the whole preview — but only lift if it's below up Z;
+  // a pen already at or above it stays put (no extra Z travel)
+  if(mpos.z-wco.z<penUpZ()-0.01)sendLine(penUpLine(),'frame',true);
   sendLine('G0 X'+r2(b.minx)+' Y'+r2(b.miny),'frame',true);
   enqueueFrameLap();
   log('outline '+r2(b.maxx-b.minx)+' × '+r2(b.maxy-b.miny)+' mm @ F'+f+
-      ' — pen up, looping until stopped','sys');
+      ' from current position — pen up, looping until stopped','sys');
   drawPreview();
 }
 /* silent cleanup — used by resets, errors, disconnects, and RUN. no motion. */

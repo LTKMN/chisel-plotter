@@ -27,7 +27,9 @@ Everything is client-side. Nothing is uploaded; images you trace never leave you
    `$130/$131` (work area, drawn as the dashed envelope in the preview).
 2. **Set the pen height:** in the Pen panel, nudge Z down (Z▼ or PgDn, step 0.1 for the
    last bit) until the pen just touches the paper, then **ZERO Z**. Pen-down is now `0`; pen-up defaults to `3` mm.
-3. Jog to where the drawing's origin should be and **SET ZERO**.
+3. Jog to where the drawing's origin (bottom-left for traced images) should be. There's
+   no XY zero to set: **OUTLINE** and **RUN** both zero XY at the pen's current position
+   before they move.
 4. Drop a `.gcode`/`.nc` file **or an image** onto the preview. Images open the vector tracer.
 5. **▢ OUTLINE** walks the job's bounding box with the pen up, looping until you click it
    again — use it to position the paper.
@@ -53,8 +55,7 @@ at all preview every feed move as drawn.
 |---|---|
 | Jog pad | XY `$J=` jog commands. Arrow keys work too; Esc = jog cancel |
 | Z▲ / Z▼ | In the Pen panel, with their own step (0.1–5 mm) at the pen z feed. PgUp/PgDn too |
-| SET ZERO | `G10 L20 P1 X0 Y0` — current XY becomes the drawing origin |
-| GO TO ZERO | Pen up, then `G90 G0 X0 Y0` (same as `◎` in the jog pad) |
+| GO TO ZERO | Pen up, then `G90 G0 X0 Y0` — back to where the last outline/run started (same as `◎` in the jog pad) |
 | ZERO Z | `G10 L20 P1 Z0` — current Z becomes pen-down |
 | Alarm popup | Appears only while GRBL is in ALARM. UNLOCK + PEN UP sends `$X` then lifts; LATER hides it (click the blinking badge to reopen) |
 | HOLD / RESUME | Realtime `!` / `~` |
